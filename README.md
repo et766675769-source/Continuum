@@ -23,7 +23,7 @@ node src/cli.mjs status
 
 Codex 首次使用钩子时，按官方要求在 `/hooks` 中审阅并信任承·上的四个钩子。它们在压缩前补存、会话结束时补存、压缩后给出简短检索指引，并在新提示词与历史片段相关时自动提供最多两个段落 ID。原文不会通过钩子注入模型，需由 MCP 按需读取。钩子发生错误时不会阻断 Codex。运行 `node src/cli.mjs remove-hooks` 可撤销钩子配置。
 
-用 PowerShell 运行 `desktop/Start.ps1`，启动后台监控和右上角无边框状态小窗。圆角小窗拖到屏幕边缘后会自动收起，只露出 5px 高亮色条；鼠标靠近色条会展开；右键可退出。运行 `desktop/install-autostart.ps1` 可设置登录后自动启动。Codex 重启或新开任务后可使用 `memory_search`、`memory_read`、`memory_status`。MCP 服务自身无需常驻；后台监控负责自动同步。
+用 PowerShell 运行 `desktop/Start.ps1`，启动后台监控和右上角无边框状态小窗。圆角小窗拖到屏幕边缘后会自动收起，只露出 5px 高亮色条；鼠标靠近色条会展开；右键可设置存放路径、迁移归档数据或隐藏到系统托盘；托盘图标双击可重新显示，托盘菜单中的“退出”才结束小窗。运行 `desktop/install-autostart.ps1` 可设置登录后自动启动。Codex 重启或新开任务后可使用 `memory_search`、`memory_read`、`memory_status`。MCP 服务自身无需常驻；后台监控负责自动同步。
 
 ## 命令
 
@@ -34,6 +34,9 @@ reindex <会话 ID>           原子重建指定会话索引
 remove <会话 ID>            停止监控，保留已索引内容
 forget <会话 ID>            删除该会话的索引并停止监控
 threshold <0.1..0.95>       设置触发比例，默认 0.7
+storage                      查看当前与待迁移的归档路径
+storage target <绝对路径>    设置新的归档目标，不立即切换
+storage migrate              迁移归档并切换到目标路径（目标目录须为空）
 sync                         单次检查并在达到阈值时导入
 watch                        每 10 秒检查一次
 status                       查看接入、索引与窗口状态
@@ -43,7 +46,7 @@ install-hooks                安装 Codex 生命周期钩子
 remove-hooks                 移除承·上的钩子
 ```
 
-所有运行数据在 `data/`，已被 `.gitignore` 排除。上传 GitHub 时只会包含源码和文档。原始 Codex 会话不被修改。项目位于百度同步盘时，`data/` 也可能被同步到你的百度云端；其中包含对话文字，请按自己的同步设置处理。
+默认归档路径为项目内的 `data/`。右键选择“设置存放路径...”指定一个项目外的空目录，再选择“迁移归档数据”；迁移成功后自动切换并重启后台监控，旧归档保留作备份；已打开的 Codex 任务需要重新打开，才能连接新归档。迁移的是承·上的索引和设置，Codex 原始会话 JSONL 不会移动。路径配置保存在项目内的 `storage.json`，它和默认 `data/` 都被 Git 忽略。若存放目录位于同步盘，对话文字也可能同步到云端，请按自己的同步设置处理。
 
 状态中的“已配置”表示已注册 MCP；“已接入”表示当前至少有一个 Codex 会话完成 MCP 握手。后台监控异常或离线会在小窗中单独显示。
 

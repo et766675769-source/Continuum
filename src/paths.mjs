@@ -1,11 +1,14 @@
-import { dirname, join } from 'node:path';
+import { dirname, join, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 
 export const root = dirname(dirname(fileURLToPath(import.meta.url)));
-export const dataDir = join(root, 'data');
-export const statePath = join(dataDir, 'state.json');
-export const dbPath = join(dataDir, 'memory.sqlite');
+export const storageConfigPath = join(root, 'storage.json');
+export function activeDataDir() {
+  const path = readJson(storageConfigPath, {}).activeDir;
+  return typeof path === 'string' && isAbsolute(path) ? resolve(path) : join(root, 'data');
+}
+export const dataDir = activeDataDir();
 export const statusPath = join(dataDir, 'status.json');
 export const codexHome = process.env.CODEX_HOME || join(process.env.USERPROFILE || process.env.HOME || '', '.codex');
 
@@ -23,6 +26,6 @@ export function writeJson(path, value) {
   renameSync(temp, path);
 }
 
-export function state() { return readJson(statePath, { sessions: [], threshold: 0.7 }); }
-export function saveState(value) { writeJson(statePath, value); }
-export function hasData() { return existsSync(dbPath); }
+export function state() { return readJson(join(activeDataDir(), 'state.json'), { sessions: [], threshold: 0.7 }); }
+export function saveState(value) { writeJson(join(activeDataDir(), 'state.json'), value); }
+export function hasData() { return existsSync(join(activeDataDir(), 'memory.sqlite')); }

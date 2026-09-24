@@ -7,6 +7,7 @@ import { ingest } from './ingest.mjs';
 import { scanOnce, watch } from './watch.mjs';
 import { isConfigured, isActive } from './cli-support.mjs';
 import { installHooks, removeHooks } from './hooks-config.mjs';
+import { storageStatus, setStorageTarget, migrateStorage } from './storage.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 const output = value => console.log(JSON.stringify(value, null, 2));
@@ -47,6 +48,11 @@ try {
     settings.sessions = settings.sessions.filter(x => x.id !== matches[0].id);
     saveState(settings);
     output({ forgotten: matches[0].id });
+  } else if (command === 'storage') {
+    if (!args.length) output(storageStatus());
+    else if (args[0] === 'target') output(setStorageTarget(args[1]));
+    else if (args[0] === 'migrate') output(migrateStorage());
+    else throw new Error('Use storage, storage target <absolute folder>, or storage migrate.');
   } else if (command === 'threshold') {
     const value = Number(args[0]);
     if (!Number.isFinite(value) || value < 0.1 || value > 0.95) throw new Error('Threshold must be 0.1 to 0.95.');
@@ -60,7 +66,7 @@ try {
     await watch();
   } else if (command === 'status') {
     const db = openStore();
-    output({ configured: isConfigured(), connected: isActive(), ...stats(db), selected: state().sessions,
+    output({ configured: isConfigured(), connected: isActive(), storage: storageStatus(), ...stats(db), selected: state().sessions,
       watcher: existsSync(statusPath) ? readJson(statusPath, null) : null });
     db.close();
   } else if (command === 'search') {
@@ -72,6 +78,6 @@ try {
   } else if (command === 'remove-hooks') {
     output({ removed: removeHooks() });
   } else {
-    console.log('承·上: list [n] | add <session-id> | reindex <session-id> | remove <session-id> | forget <session-id> | threshold <0.1..0.95> | sync | watch | status | search <words> | read <chunk-id> | install-hooks | remove-hooks');
+    console.log('承·上: list [n] | add <session-id> | reindex <session-id> | remove <session-id> | forget <session-id> | threshold <0.1..0.95> | storage [target <folder>|migrate] | sync | watch | status | search <words> | read <chunk-id> | install-hooks | remove-hooks');
   }
 } catch (error) { console.error(error.message); process.exitCode = 1; }

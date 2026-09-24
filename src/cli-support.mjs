@@ -1,13 +1,13 @@
 import { readFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { codexHome, dataDir } from './paths.mjs';
+import { codexHome, activeDataDir } from './paths.mjs';
 
 export function isConfigured() {
   try { return /^\[mcp_servers\.cheng_shang\]/m.test(readFileSync(join(codexHome, 'config.toml'), 'utf8')); }
   catch { return false; }
 }
 
-export function isActive(dir = dataDir) {
+export function isActive(dir = activeDataDir()) {
   try {
     let active = false;
     for (const name of readdirSync(dir)) {

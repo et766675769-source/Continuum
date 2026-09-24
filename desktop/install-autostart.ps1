@@ -1,5 +1,7 @@
 ﻿$project = Split-Path -Parent $PSScriptRoot
-$data = Join-Path $project 'data'
+$configFile = Join-Path $project 'storage.json'
+$data = if (Test-Path -LiteralPath $configFile) { (Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json).activeDir } else { $null }
+if (-not $data) { $data = Join-Path $project 'data' }
 New-Item -ItemType Directory -Path $data -Force | Out-Null
 (Get-Command node -ErrorAction Stop).Source | Set-Content -LiteralPath (Join-Path $data 'node-path.txt') -Encoding UTF8
 $launcher = Join-Path $PSScriptRoot 'Start.ps1'

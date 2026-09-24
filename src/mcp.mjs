@@ -2,11 +2,16 @@ import readline from 'node:readline';
 import { unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { openStore, search, readChunk, stats } from './store.mjs';
-import { state, dataDir, writeJson } from './paths.mjs';
+import { state, activeDataDir, writeJson } from './paths.mjs';
 
-const db = openStore();
-const alivePath = join(dataDir, `mcp-${process.pid}.json`);
-process.on('exit', () => { try { unlinkSync(alivePath); } catch {} });
+let alivePath;
+function pulse() {
+  const next = join(activeDataDir(), `mcp-${process.pid}.json`);
+  if (alivePath && alivePath !== next) { try { unlinkSync(alivePath); } catch {} }
+  alivePath = next;
+  writeJson(alivePath, { pid: process.pid, at: new Date().toISOString() });
+}
+process.on('exit', () => { if (alivePath) try { unlinkSync(alivePath); } catch {} });
 let heartbeat;
 const tools = [
   { name: 'memory_status', description: 'Show local Codex context archive status and selected conversations.', inputSchema: { type: 'object', properties: {} } },
@@ -19,23 +24,24 @@ function result(value) { return { content: [{ type: 'text', text: JSON.stringify
 function handle(message) {
   const { method, params = {} } = message;
   if (method === 'initialize') {
-    writeJson(alivePath, { pid: process.pid, at: new Date().toISOString() });
-    if (!heartbeat) heartbeat = setInterval(() => {
-      try { writeJson(alivePath, { pid: process.pid, at: new Date().toISOString() }); } catch {}
-    }, 10000).unref();
+    pulse();
+    if (!heartbeat) heartbeat = setInterval(() => { try { pulse(); } catch {} }, 10000).unref();
     return { protocolVersion: params.protocolVersion || '2025-06-18', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'cheng-shang', version: '0.1.0' } };
   }
   if (method === 'ping') return {};
   if (method === 'tools/list') return { tools };
   if (method === 'tools/call') {
     const args = params.arguments || {};
-    if (params.name === 'memory_status') return result({ ...stats(db), selected: state().sessions.map(x => x.id) });
-    if (params.name === 'memory_search') {
-      if (typeof args.query !== 'string' || !args.query.trim()) throw new Error('query is required');
-      return result(search(db, args.query, { sessionId: args.session_id, limit: args.limit }));
-    }
-    if (params.name === 'memory_read') return result(readChunk(db, Number(args.id), 5000, args.neighbors));
-    throw new Error(`Unknown tool: ${params.name}`);
+    const db = openStore();
+    try {
+      if (params.name === 'memory_status') return result({ ...stats(db), storage: activeDataDir(), selected: state().sessions.map(x => x.id) });
+      if (params.name === 'memory_search') {
+        if (typeof args.query !== 'string' || !args.query.trim()) throw new Error('query is required');
+        return result(search(db, args.query, { sessionId: args.session_id, limit: args.limit }));
+      }
+      if (params.name === 'memory_read') return result(readChunk(db, Number(args.id), 5000, args.neighbors));
+      throw new Error(`Unknown tool: ${params.name}`);
+    } finally { db.close(); }
   }
   throw new Error(`Unknown method: ${method}`);
 }

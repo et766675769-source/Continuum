@@ -1,10 +1,11 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { dbPath } from './paths.mjs';
+import { activeDataDir } from './paths.mjs';
+import { join } from 'node:path';
 import { terms, vector, similarity } from './vector.mjs';
 
-export function openStore(path = dbPath) {
+export function openStore(path = join(activeDataDir(), 'memory.sqlite')) {
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=3000;
