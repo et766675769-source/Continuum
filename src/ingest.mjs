@@ -1,6 +1,7 @@
 import { statSync, openSync, readSync, closeSync } from 'node:fs';
 import { linesFrom, contentFromItem, preview } from './sessions.mjs';
 import { clearSession, saveChunk } from './store.mjs';
+import { syncConversation } from './archive.mjs';
 
 const CHUNK = 1400;
 const OVERLAP = 150;
@@ -50,6 +51,7 @@ export async function ingest(db, file, { reset: forceReset = false } = {}) {
       .run(file.id, file.path, meta.cwd, meta.created, offset, lineNo, inputTokens, contextWindow);
     db.exec('COMMIT');
   } catch (error) { db.exec('ROLLBACK'); throw error; }
+  syncConversation(db, file, meta, reset);
   return { id: file.id, added, malformed, offset, lineNo, inputTokens, contextWindow };
 }
 

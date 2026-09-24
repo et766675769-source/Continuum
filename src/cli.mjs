@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs';
-import { state, saveState, readJson, statusPath } from './paths.mjs';
+import { forgetConversation } from './archive.mjs';
+import { activeDataDir, state, saveState, readJson, statusPath } from './paths.mjs';
 import { sessionFiles, findSession, preview } from './sessions.mjs';
 import { openStore, search, readChunk, stats, clearSession } from './store.mjs';
 import { ingest } from './ingest.mjs';
@@ -22,10 +23,9 @@ try {
     if (!file) throw new Error('Session not found. Use list to find an ID.');
     const settings = state();
     if (!settings.sessions.some(x => x.id === file.id)) settings.sessions.push({ id: file.id, path: file.path });
-    saveState(settings);
     const db = openStore();
-    output(await ingest(db, file));
-    db.close();
+    try { output(await ingest(db, file)); saveState(settings); }
+    finally { db.close(); }
   } else if (command === 'reindex') {
     const selected = state().sessions.find(x => x.id === args[0] || x.id.startsWith(args[0] || '\0'));
     if (!selected) throw new Error('Select a session first with add.');
@@ -45,6 +45,7 @@ try {
     db.exec('BEGIN');
     try { clearSession(db, matches[0].id); db.exec('COMMIT'); } catch (error) { db.exec('ROLLBACK'); throw error; }
     db.close();
+    forgetConversation(activeDataDir(), matches[0].id);
     settings.sessions = settings.sessions.filter(x => x.id !== matches[0].id);
     saveState(settings);
     output({ forgotten: matches[0].id });

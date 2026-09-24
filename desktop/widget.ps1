@@ -51,11 +51,19 @@ $form.Add_Paint({
 
 $label = New-Object System.Windows.Forms.Label
 $label.Dock = 'Fill'
-$label.Padding = New-Object System.Windows.Forms.Padding(12, 10, 4, 4)
+$label.Padding = New-Object System.Windows.Forms.Padding(50, 10, 4, 4)
 $label.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
 $label.BackColor = [System.Drawing.Color]::Transparent
 $label.Text = "承·上  等待同步..."
 $form.Controls.Add($label)
+$markPath = Join-Path $project 'assets\continuum-mark.png'
+$logoView = New-Object System.Windows.Forms.PictureBox
+$logoView.Image = [System.Drawing.Image]::FromFile($markPath)
+$logoView.SizeMode = 'Zoom'
+$logoView.Size = New-Object System.Drawing.Size(32, 32)
+$logoView.Location = New-Object System.Drawing.Point(9, 25)
+$logoView.BackColor = [System.Drawing.Color]::Transparent
+$form.Controls.Add($logoView)
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $show = $menu.Items.Add('显示窗口')
@@ -72,16 +80,23 @@ $show.Add_Click({
 $hide = $menu.Items.Add('隐藏到系统托盘')
 $hide.Add_Click({ $form.Hide() })
 [void]$menu.Items.Add('-')
+$select = $menu.Items.Add('指定对话...')
+$select.Add_Click({
+  try { & (Join-Path $PSScriptRoot 'select-sessions.ps1') -Node $node -Cli $cli }
+  catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：读取对话失败') }
+})
 $choose = $menu.Items.Add('设置存放路径...')
 $choose.Add_Click({
   $picker = New-Object System.Windows.Forms.FolderBrowserDialog
-  $picker.Description = '选择承·上归档数据的新存放目录（不会移动 Codex 原始对话）'
+  $picker.Description = '选择承·上归档目录。确认后自动迁移并建立对话文件夹'
   $picker.SelectedPath = Get-StorageDir
   try {
     if ($picker.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
     $message = & $node $cli storage target $picker.SelectedPath 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) { throw $message.Trim() }
-    [void][System.Windows.Forms.MessageBox]::Show("目标路径已设置：$($picker.SelectedPath)`n请再选择迁移归档数据完成切换。", '承·上')
+    if ($picker.SelectedPath -eq (Get-StorageDir)) {
+      [void][System.Windows.Forms.MessageBox]::Show('已是当前存放路径。', '承·上')
+    } else { $migrate.PerformClick() }
   } catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：设置失败') }
   finally { $picker.Dispose() }
 })
@@ -123,8 +138,10 @@ $form.Add_FormClosing({ param($sender, $e)
 })
 $form.ContextMenuStrip = $menu
 $label.ContextMenuStrip = $menu
+$logoView.ContextMenuStrip = $menu
 $tray = New-Object System.Windows.Forms.NotifyIcon
-$tray.Icon = [System.Drawing.SystemIcons]::Information
+$tray.Icon = [System.Drawing.Icon]::new((Join-Path $project 'assets\continuum-icon.ico'))
+$form.Icon = $tray.Icon
 $tray.Text = '承·上'
 $tray.ContextMenuStrip = $menu
 $tray.Visible = $true
@@ -167,7 +184,7 @@ $mouseUp = {
   $script:edge = if ($nearest.Value -le 20) { $nearest.Key } else { '' }
   $script:hideAt = [DateTime]::UtcNow.AddMilliseconds(600)
 }
-foreach ($control in @($form, $label)) {
+foreach ($control in @($form, $label, $logoView)) {
   $control.Add_MouseDown($mouseDown)
   $control.Add_MouseMove($mouseMove)
   $control.Add_MouseUp($mouseUp)
@@ -217,4 +234,4 @@ $timer.Add_Tick({
 })
 $timer.Start()
 try { [System.Windows.Forms.Application]::Run($form) }
-finally { $timer.Stop(); $tray.Visible = $false; $tray.Dispose(); $menu.Dispose(); $round.Dispose(); $mutex.ReleaseMutex(); $mutex.Dispose() }
+finally { $timer.Stop(); $tray.Visible = $false; $tray.Icon.Dispose(); $tray.Dispose(); $logoView.Image.Dispose(); $menu.Dispose(); $round.Dispose(); $mutex.ReleaseMutex(); $mutex.Dispose() }

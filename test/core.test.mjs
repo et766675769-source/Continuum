@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { dataDir } from '../src/paths.mjs';
 import { openStore, search, readChunk, stats } from '../src/store.mjs';
 import { ingest, latestUsage } from '../src/ingest.mjs';
@@ -25,6 +26,10 @@ test('incremental import, incomplete line, Chinese vector search and exact read'
     assert.equal(first.added, 2);
     assert.equal(first.inputTokens, 75);
     assert.equal(stats(db).chunks, 2);
+    const archive = join(dir, 'conversations', 'example', 'context.sqlite');
+    const archiveDb = new DatabaseSync(archive);
+    assert.equal(archiveDb.prepare('SELECT count(*) n FROM chunks').get().n, 2);
+    archiveDb.close();
     assert.deepEqual(latestUsage(path), { inputTokens: 75, contextWindow: 100 });
     const hits = search(db, '中文向量检索');
     assert.ok(hits.length > 0);
@@ -35,7 +40,16 @@ test('incremental import, incomplete line, Chinese vector search and exact read'
     assert.equal(second.malformed, 1);
     assert.equal(second.added, 1);
     assert.equal(stats(db).chunks, 3);
+    const updatedArchive = new DatabaseSync(archive);
+    assert.equal(updatedArchive.prepare('SELECT count(*) n FROM chunks').get().n, 3);
+    updatedArchive.close();
     assert.ok(similarity(vector('中文搜索'), vector('搜索中文')) > 0);
+    const other = { id: 'another', path: join(dir, 'rollout-another.jsonl') };
+    writeFileSync(other.path, [rows[0], rows[1]].map(x => JSON.stringify(x)).join(String.fromCharCode(10)) + String.fromCharCode(10));
+    await ingest(db, other);
+    const otherArchive = new DatabaseSync(join(dir, 'conversations', 'another', 'context.sqlite'));
+    assert.equal(otherArchive.prepare('SELECT count(*) n FROM chunks').get().n, 1);
+    otherArchive.close();
   } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

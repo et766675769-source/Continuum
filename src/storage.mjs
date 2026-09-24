@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { activeDataDir, root, storageConfigPath, readJson, writeJson } from './paths.mjs';
@@ -34,7 +34,9 @@ export function migrateStorage(configPath = storageConfigPath, source = activeDa
     try { process.kill(pid, 0); throw new Error('Stop the background watcher before migration.'); }
     catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
-  if (existsSync(target) && readdirSync(target).length) throw new Error('Destination folder must be empty.');
+  for (const name of ['memory.sqlite', 'state.json', 'node-path.txt', 'conversations']) {
+    if (existsSync(join(target, name))) throw new Error('Destination already contains a Continuum archive.');
+  }
   mkdirSync(target, { recursive: true });
   const sourceDb = join(source, 'memory.sqlite');
   if (existsSync(sourceDb)) {
@@ -42,6 +44,7 @@ export function migrateStorage(configPath = storageConfigPath, source = activeDa
     try { db.exec(`VACUUM INTO '${join(target, 'memory.sqlite').replaceAll("'", "''")}'`); }
     finally { db.close(); }
   }
+  if (existsSync(join(source, 'conversations'))) cpSync(join(source, 'conversations'), join(target, 'conversations'), { recursive: true });
   for (const name of ['state.json', 'node-path.txt']) {
     if (existsSync(join(source, name))) copyFileSync(join(source, name), join(target, name));
   }
