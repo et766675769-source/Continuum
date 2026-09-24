@@ -1,0 +1,13 @@
+{
+  "name": "cheng-shang",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "bin": { "chengshang": "./src/cli.mjs" },
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/cli.mjs watch",
+    "mcp": "node src/mcp.mjs"
+  }
+}
