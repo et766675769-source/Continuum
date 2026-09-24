@@ -9,18 +9,20 @@ export function isConfigured() {
 
 export function isActive(dir = dataDir) {
   try {
-    return readdirSync(dir).some(name => {
+    let active = false;
+    for (const name of readdirSync(dir)) {
       const pid = /^mcp-(\d+)\.json$/.exec(name)?.[1];
-      if (!pid) return false;
+      if (!pid) continue;
       const marker = join(dir, name);
       try {
         if (Date.now() - statSync(marker).mtimeMs < 30000) {
           process.kill(Number(pid), 0);
-          return true;
+          active = true;
+          continue;
         }
       } catch { /* dead or stale server */ }
       try { unlinkSync(marker); } catch {}
-      return false;
-    });
+    }
+    return active;
   } catch { return false; }
 }

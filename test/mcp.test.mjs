@@ -31,7 +31,11 @@ test('connection status expires stale markers', () => {
   const marker = join(dir, `mcp-${process.pid}.json`);
   try {
     writeFileSync(marker, '{}');
+    const stale = join(dir, 'mcp-2147483000.json');
+    writeFileSync(stale, '{}');
+    utimesSync(stale, new Date(0), new Date(0));
     assert.equal(isActive(dir), true);
+    assert.equal(existsSync(stale), false);
     utimesSync(marker, new Date(0), new Date(0));
     assert.equal(isActive(dir), false);
     assert.equal(existsSync(marker), false);
