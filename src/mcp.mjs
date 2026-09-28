@@ -34,7 +34,7 @@ function handle(message) {
   if (method === 'initialize') {
     pulse();
     if (!heartbeat) heartbeat = setInterval(() => { try { pulse(); } catch {} }, 10000).unref();
-    return { protocolVersion: params.protocolVersion || '2025-06-18', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'cheng-shang', version: '0.3.0' } };
+    return { protocolVersion: params.protocolVersion || '2025-06-18', capabilities: { tools: { listChanged: false } }, serverInfo: { name: 'cheng-shang', version: '0.3.1' } };
   }
   if (method === 'ping') return {};
   if (method === 'tools/list') return { tools };

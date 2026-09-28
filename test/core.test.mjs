@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, rmSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, rmSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { dataDir } from '../src/paths.mjs';
@@ -9,6 +9,7 @@ import { ingest, latestUsage } from '../src/ingest.mjs';
 import { archiveHealth } from '../src/diagnostics.mjs';
 import { evaluate } from '../src/eval.mjs';
 import { vector, similarity } from '../src/vector.mjs';
+import { snapshot } from '../src/backup.mjs';
 
 test('incremental import, incomplete line, Chinese vector search and exact read', async () => {
   mkdirSync(dataDir, { recursive: true });
@@ -60,6 +61,29 @@ test('incremental import, incomplete line, Chinese vector search and exact read'
     assert.equal(evaluate(db, [{ query: '中文对话搜索', expectedText: '向量检索' }]).recallAt5, 1);
     unlinkSync(join(dir, 'conversations', 'another', 'context.sqlite'));
     assert.equal(archiveHealth(db, [file, other], dir).readable, false);
+  } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('corrupt main index is reported even when no sampled conversation reveals it', () => {
+  const db = { prepare: () => ({ get: () => ({ quick_check: 'database disk image is malformed' }) }) };
+  const health = archiveHealth(db, []);
+  assert.equal(health.readable, false);
+  assert.match(health.issues[0], /主索引损坏/);
+});
+
+test('healthy snapshot preserves task data in a standalone SQLite file', async () => {
+  const dir = mkdtempSync(join(dataDir, 'backup-test-'));
+  const db = openStore(join(dir, 'memory.sqlite'));
+  try {
+    db.prepare("INSERT INTO tasks(title,project,updated) VALUES('续接任务','demo',datetime('now'))").run();
+    const path = await snapshot(db);
+    assert.equal(await snapshot(db), path);
+    assert.equal(existsSync(`${path}.${process.pid}.tmp-shm`), false);
+    const copy = new DatabaseSync(path, { readOnly: true });
+    try {
+      assert.equal(copy.prepare('PRAGMA quick_check(1)').get().quick_check, 'ok');
+      assert.equal(copy.prepare('SELECT title FROM tasks').get().title, '续接任务');
+    } finally { copy.close(); }
   } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

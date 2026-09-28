@@ -13,6 +13,12 @@ export function archiveHealth(db, selected, dir = activeDataDir()) {
   const issues = [];
   let pendingBytes = 0;
   let indexed = 0;
+  try {
+    if (db.prepare('PRAGMA quick_check(1)').get().quick_check !== 'ok')
+      return { readable: false, indexed, pendingBytes, issues: ['主索引损坏：SQLite 完整性检查失败'] };
+  } catch (error) {
+    return { readable: false, indexed, pendingBytes, issues: [`主索引检查失败：${error.message}`] };
+  }
   // ponytail: one search/read per selected conversation every 10s; cache only if many sessions make monitoring slow.
   for (const selectedFile of selected) {
     const file = existsSync(selectedFile.path) ? selectedFile : findSession(selectedFile.id);

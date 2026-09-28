@@ -7,6 +7,7 @@ import { ingest, latestUsage } from './ingest.mjs';
 import { isConfigured, isActive } from './cli-support.mjs';
 import { archiveHealth } from './diagnostics.mjs';
 import { listTasks, resume, ensureTask } from './tasks.mjs';
+import { snapshot } from './backup.mjs';
 
 const pidPath = join(dataDir, 'watch.pid');
 
@@ -52,10 +53,25 @@ export async function watch() {
   if (!claim()) return;
   const db = openStore();
   let scanning = false;
+  let nextBackup = 0;
+  let backupError = '';
   const tick = async () => {
     if (scanning) return;
     scanning = true;
-    try { await scanOnce(db); }
+    try {
+      const report = await scanOnce(db);
+      if (report.readable && !report.errors.length && Date.now() >= nextBackup) {
+        try {
+          await snapshot(db);
+          backupError = '';
+          nextBackup = Date.now() + 3600000;
+        } catch (error) {
+          backupError = `快照失败：${error.message}`;
+          nextBackup = Date.now() + 300000;
+        }
+      }
+      if (backupError) { report.errors.push(backupError); writeJson(statusPath, report); }
+    }
     catch (error) {
       try { writeJson(statusPath, { at: new Date().toISOString(), configured: isConfigured(), connected: isActive(), error: error.message }); }
       catch { /* A locked status file must not stop the watcher. */ }
