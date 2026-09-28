@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, rmSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { dataDir } from '../src/paths.mjs';
 import { openStore, search, readChunk, stats } from '../src/store.mjs';
 import { ingest, latestUsage } from '../src/ingest.mjs';
+import { archiveHealth } from '../src/diagnostics.mjs';
 import { vector, similarity } from '../src/vector.mjs';
 
 test('incremental import, incomplete line, Chinese vector search and exact read', async () => {
@@ -50,6 +51,9 @@ test('incremental import, incomplete line, Chinese vector search and exact read'
     const otherArchive = new DatabaseSync(join(dir, 'conversations', 'another', 'context.sqlite'));
     assert.equal(otherArchive.prepare('SELECT count(*) n FROM chunks').get().n, 1);
     otherArchive.close();
+    assert.equal(archiveHealth(db, [file, other], dir).readable, true);
+    unlinkSync(join(dir, 'conversations', 'another', 'context.sqlite'));
+    assert.equal(archiveHealth(db, [file, other], dir).readable, false);
   } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

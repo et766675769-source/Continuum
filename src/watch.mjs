@@ -5,6 +5,7 @@ import { findSession } from './sessions.mjs';
 import { openStore, stats } from './store.mjs';
 import { ingest, latestUsage } from './ingest.mjs';
 import { isConfigured, isActive } from './cli-support.mjs';
+import { archiveHealth } from './diagnostics.mjs';
 
 const pidPath = join(dataDir, 'watch.pid');
 
@@ -35,8 +36,10 @@ export async function scanOnce(db = openStore()) {
         indexedBytes: db.prepare('SELECT offset FROM sessions WHERE id=?').get(file.id)?.offset || 0 });
     } catch (error) { errors.push(`${selected.id}: ${error.message}`); }
   }
+  const health = archiveHealth(db, settings.sessions);
   const report = { at: new Date().toISOString(), configured: isConfigured(), connected: isActive(),
-    threshold: settings.threshold, ...stats(db), selected: sessionStatus, errors };
+    readable: health.readable, indexed: health.indexed, pendingBytes: health.pendingBytes,
+    threshold: settings.threshold, ...stats(db), selected: sessionStatus, errors: [...errors, ...health.issues] };
   writeJson(statusPath, report);
   return report;
 }

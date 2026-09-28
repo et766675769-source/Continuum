@@ -4,6 +4,8 @@ if (-not $created) { $mutex.Dispose(); exit }
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
 
 $project = Split-Path -Parent $PSScriptRoot
 $cli = Join-Path $project 'src\cli.mjs'
@@ -80,6 +82,11 @@ $show.Add_Click({
 $hide = $menu.Items.Add('隐藏到系统托盘')
 $hide.Add_Click({ $form.Hide() })
 [void]$menu.Items.Add('-')
+$setup = $menu.Items.Add('接入检查...')
+$setup.Add_Click({
+  try { & (Join-Path $PSScriptRoot 'setup.ps1') -Node $node -Cli $cli }
+  catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：接入检查失败') }
+})
 $select = $menu.Items.Add('指定对话...')
 $select.Add_Click({
   try { & (Join-Path $PSScriptRoot 'select-sessions.ps1') -Node $node -Cli $cli }
@@ -200,8 +207,12 @@ $timer.Add_Tick({
       $script:statusFile = Join-Path (Get-StorageDir) 'status.json'
       $status = Get-Content -LiteralPath $script:statusFile -Raw -Encoding UTF8 | ConvertFrom-Json
       $age = ([DateTime]::UtcNow - [DateTime]::Parse($status.at).ToUniversalTime()).TotalSeconds
-      $health = if ($age -gt 30) { '监控未运行' } elseif ($status.connected) { '已接入 Codex' } elseif ($status.configured) { '已配置 Codex' } else { '未接入 Codex' }
+      $health = if ($age -gt 30) { '监控未运行' } elseif (-not $status.configured) { '未配置 Codex' } elseif ($status.selected.Count -eq 0) { '未选对话' } elseif (-not $status.readable) { '归档待验证' } elseif ($status.connected) { '已接入·可读取' } else { '归档可用·待连接' }
       if ($status.errors.Count -gt 0 -or $status.error) { $health = '同步异常' }
+      if (-not $script:setupOpened -and (-not $status.configured -or $status.selected.Count -eq 0)) {
+        $script:setupOpened = $true
+        $setup.PerformClick()
+      }
       $current = $status.selected | Sort-Object ratio -Descending | Select-Object -First 1
       $window = if ($null -ne $current) { "窗口 $($current.ratio)%  ($($current.inputTokens) / $($current.contextWindow) tokens)" } else { '窗口 --' }
       $label.Text = "承·上  $health`n$window`n归档 $($status.chars) 字 / $($status.chunks) 段"

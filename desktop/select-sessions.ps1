@@ -4,6 +4,8 @@
 )
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$OutputEncoding = [Text.UTF8Encoding]::new($false)
 
 $recentText = & $Node $Cli list 200 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0) { throw $recentText.Trim() }

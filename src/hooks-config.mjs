@@ -36,3 +36,11 @@ export function removeHooks() {
   writeJson(path, config);
   return path;
 }
+
+export function hooksInstalled(configPath = path) {
+  try {
+    const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    return names.every(name => config.hooks?.[name]?.some(group =>
+      group.hooks?.some(hook => hook.command?.includes(script))));
+  } catch { return false; }
+}

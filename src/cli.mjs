@@ -9,6 +9,7 @@ import { scanOnce, watch } from './watch.mjs';
 import { isConfigured, isActive } from './cli-support.mjs';
 import { installHooks, removeHooks } from './hooks-config.mjs';
 import { storageStatus, setStorageTarget, migrateStorage } from './storage.mjs';
+import { diagnose } from './diagnostics.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 const output = value => console.log(JSON.stringify(value, null, 2));
@@ -65,6 +66,9 @@ try {
     db.close();
   } else if (command === 'watch') {
     await watch();
+  } else if (command === 'doctor') {
+    const db = openStore();
+    try { output(diagnose(db)); } finally { db.close(); }
   } else if (command === 'status') {
     const db = openStore();
     output({ configured: isConfigured(), connected: isActive(), storage: storageStatus(), ...stats(db), selected: state().sessions,
@@ -79,6 +83,6 @@ try {
   } else if (command === 'remove-hooks') {
     output({ removed: removeHooks() });
   } else {
-    console.log('承·上: list [n] | add <session-id> | reindex <session-id> | remove <session-id> | forget <session-id> | threshold <0.1..0.95> | storage [target <folder>|migrate] | sync | watch | status | search <words> | read <chunk-id> | install-hooks | remove-hooks');
+    console.log('承·上: list [n] | add <session-id> | reindex <session-id> | remove <session-id> | forget <session-id> | threshold <0.1..0.95> | storage [target <folder>|migrate] | sync | watch | status | doctor | search <words> | read <chunk-id> | install-hooks | remove-hooks');
   }
 } catch (error) { console.error(error.message); process.exitCode = 1; }

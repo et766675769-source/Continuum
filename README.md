@@ -12,7 +12,7 @@ Windows 上的本地 Codex 对话上下文承载器。指定会话后，承·上
 
 ## 快速开始
 
-在 PowerShell 中进入本目录：
+首次使用：运行 `desktop/Start.ps1`。小窗会打开“接入检查”，依次点击“接入 Codex”“指定对话”，并在 Codex 输入 `/hooks` 审阅钩子。状态页会实际检查归档、检索和读取；更改存放位置可用小窗右键菜单。也可在 PowerShell 中手动接入：
 
 ```powershell
 node src/cli.mjs list
@@ -20,7 +20,7 @@ node src/cli.mjs add <会话 ID>
 $mcp = (Resolve-Path .\src\mcp.mjs).Path
 codex mcp add cheng_shang -- node $mcp
 node src/cli.mjs install-hooks
-node src/cli.mjs status
+node src/cli.mjs doctor
 ```
 
 Codex 首次使用钩子时，按官方要求在 `/hooks` 中审阅并信任承·上的四个钩子。它们在压缩前补存、会话结束时补存、压缩后给出简短检索指引，并在新提示词与历史片段相关时自动提供最多两个段落 ID。原文不会通过钩子注入模型，需由 MCP 按需读取。钩子发生错误时不会阻断 Codex。运行 `node src/cli.mjs remove-hooks` 可撤销钩子配置。
@@ -42,6 +42,7 @@ storage migrate              迁移归档并切换到目标路径
 sync                         单次检查并在达到阈值时导入
 watch                        每 10 秒检查一次
 status                       查看接入、索引与窗口状态
+doctor                       检查配置、归档检索和后台监控
 search <关键词>              本地检索
 read <段落 ID> [邻近段数]   读取段落及同条消息的邻近段（最多 5000 字符）
 install-hooks                安装 Codex 生命周期钩子
@@ -50,7 +51,7 @@ remove-hooks                 移除承·上的钩子
 
 默认归档路径为项目内的 `data/`。右键选择“指定对话...”勾选需要归档的对话；选择“设置存放路径...”指定项目外目录后会自动迁移、切换并重启后台监控，旧归档保留作备份；已打开的 Codex 任务需要重新打开，才能连接新归档。所选目录可含其他文件，但不能已有承·上归档。承·上在其中自动创建 `conversations/<对话 ID>/`，每个文件夹包含独立的 `context.sqlite` 和会话信息；中央 `memory.sqlite` 仍负责跨对话快速检索。迁移的是承·上的索引、独立对话文件和设置，Codex 原始会话 JSONL 不会移动。路径配置保存在项目内的 `storage.json`，它和默认 `data/` 都被 Git 忽略。若存放目录位于同步盘，对话文字也可能同步到云端，请按自己的同步设置处理。
 
-状态中的“已配置”表示已注册 MCP；“已接入”表示当前至少有一个 Codex 会话完成 MCP 握手。后台监控异常或离线会在小窗中单独显示。
+小窗中的“已接入·可读取”要求当前 Codex MCP 已连接，且选中对话的归档能搜索、读取。右键“接入检查...”会逐项显示配置、钩子、对话、归档检索和监控状态；钩子是否被信任仍须在 Codex 的 `/hooks` 中人工确认。未达到阈值的新增内容显示为“待归档”，不代表检索故障。
 
 ## 检索和边界
 
