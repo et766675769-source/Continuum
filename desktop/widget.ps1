@@ -87,10 +87,20 @@ $setup.Add_Click({
   try { & (Join-Path $PSScriptRoot 'setup.ps1') -Node $node -Cli $cli }
   catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：接入检查失败') }
 })
+$memory = $menu.Items.Add('重点记忆...')
+$memory.Add_Click({
+  try { & (Join-Path $PSScriptRoot 'memories.ps1') -Node $node -Cli $cli }
+  catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：重点记忆失败') }
+})
 $select = $menu.Items.Add('指定对话...')
 $select.Add_Click({
   try { & (Join-Path $PSScriptRoot 'select-sessions.ps1') -Node $node -Cli $cli }
   catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：读取对话失败') }
+})
+$privacy = $menu.Items.Add('归档与隐私...')
+$privacy.Add_Click({
+  try { & (Join-Path $PSScriptRoot 'privacy.ps1') -Node $node -Cli $cli }
+  catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：归档管理失败') }
 })
 $choose = $menu.Items.Add('设置存放路径...')
 $choose.Add_Click({

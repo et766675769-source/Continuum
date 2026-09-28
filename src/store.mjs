@@ -21,6 +21,13 @@ export function openStore(path = join(activeDataDir(), 'memory.sqlite')) {
     );
     CREATE INDEX IF NOT EXISTS chunks_session ON chunks(session_id, line_no);
     CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(grams);
+    CREATE TABLE IF NOT EXISTS pins (
+      id INTEGER PRIMARY KEY, session_id TEXT NOT NULL, chunk_id INTEGER NOT NULL,
+      line_no INTEGER NOT NULL, kind TEXT NOT NULL, note TEXT NOT NULL,
+      quote TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+      updated TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS pins_session ON pins(session_id,status);
   `);
   return db;
 }
@@ -34,26 +41,34 @@ export function saveChunk(db, chunk) {
 }
 
 export function clearSession(db, id) {
+  db.prepare("UPDATE pins SET status='stale',updated=datetime('now') WHERE session_id=? AND status='active'").run(id);
   db.prepare('DELETE FROM chunk_fts WHERE rowid IN (SELECT id FROM chunks WHERE session_id=?)').run(id);
   db.prepare('DELETE FROM chunks WHERE session_id=?').run(id);
   db.prepare('DELETE FROM sessions WHERE id=?').run(id);
 }
 
-export function search(db, query, { sessionId, limit = 6, conversationOnly = false } = {}) {
+export function search(db, query, { sessionId, project, since, until, role, limit = 6, conversationOnly = false } = {}) {
+  if (role && !['user', 'assistant', 'tool_call', 'tool_result'].includes(role)) throw new Error('Invalid role filter.');
+  for (const date of [since, until]) if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Dates must use YYYY-MM-DD.');
   const allWords = [...new Set(terms(query))];
   const words = allWords.length <= 16 ? allWords :
     Array.from({ length: 16 }, (_, i) => allWords[Math.floor(i * (allWords.length - 1) / 15)]);
   if (!words.length) return [];
   const match = words.map(x => `"${x.replaceAll('"', '""')}"`).join(' OR ');
   const rows = db.prepare(`SELECT c.id,c.session_id,c.line_no,c.part,c.role,c.text,c.vec,
-    bm25(chunk_fts) AS rank FROM chunk_fts JOIN chunks c ON c.id=chunk_fts.rowid
+    s.cwd,s.created,bm25(chunk_fts) AS rank
+    FROM chunk_fts JOIN chunks c ON c.id=chunk_fts.rowid JOIN sessions s ON s.id=c.session_id
     WHERE chunk_fts MATCH ? AND (? IS NULL OR c.session_id=?)
+      AND (? IS NULL OR s.cwd=?) AND (? IS NULL OR substr(s.created,1,10)>=?)
+      AND (? IS NULL OR substr(s.created,1,10)<=?) AND (? IS NULL OR c.role=?)
       AND (? = 0 OR c.role IN ('user','assistant'))
-    ORDER BY rank LIMIT 120`).all(match, sessionId || null, sessionId || null, conversationOnly ? 1 : 0);
+    ORDER BY rank LIMIT 120`).all(match, sessionId || null, sessionId || null,
+      project || null, project || null, since || null, since || null, until || null, until || null,
+      role || null, role || null, conversationOnly ? 1 : 0);
   const qvec = vector(query);
   const ranked = rows.map(row => ({
     id: row.id, sessionId: row.session_id, line: row.line_no, part: row.part,
-    role: row.role, score: similarity(qvec, JSON.parse(row.vec)) + Math.min(0.25, -row.rank / 50),
+    role: row.role, project: row.cwd, created: row.created, score: similarity(qvec, JSON.parse(row.vec)) + Math.min(0.25, -row.rank / 50),
     excerpt: row.text.slice(0, 600)
   })).sort((a, b) => b.score - a.score);
   const seen = new Set();
@@ -65,7 +80,7 @@ export function search(db, query, { sessionId, limit = 6, conversationOnly = fal
   }).slice(0, Math.max(1, Math.min(limit, 20)));
 }
 
-export function readChunk(db, id, maxChars = 5000, neighbors = 0) {
+export function readChunk(db, id, maxChars = 5000, neighbors = 0, around = 0) {
   const row = db.prepare('SELECT id,session_id,line_no,part,role,text FROM chunks WHERE id=?').get(id);
   if (!row) return null;
   const span = Math.max(0, Math.min(Number(neighbors) || 0, 2));
@@ -79,9 +94,22 @@ export function readChunk(db, id, maxChars = 5000, neighbors = 0) {
       parts[i].text.startsWith(previous.text.slice(-150));
     text += (i && !overlap ? '\n' : '') + parts[i].text.slice(overlap ? 150 : 0);
   }
+  const nearby = [];
+  const radius = Math.max(0, Math.min(Number(around) || 0, 2));
+  if (radius) {
+    const before = db.prepare(`SELECT id,line_no,role,text FROM chunks
+      WHERE session_id=? AND line_no<? AND part=0 ORDER BY line_no DESC LIMIT ?`)
+      .all(row.session_id, row.line_no, radius).reverse();
+    const after = db.prepare(`SELECT id,line_no,role,text FROM chunks
+      WHERE session_id=? AND line_no>? AND part=0 ORDER BY line_no LIMIT ?`)
+      .all(row.session_id, row.line_no, radius);
+    for (const item of [...before, ...after]) nearby.push({
+      id: item.id, line: item.line_no, role: item.role, excerpt: item.text.slice(0, 400)
+    });
+  }
   return { id: row.id, sessionId: row.session_id, line: row.line_no,
     part: row.part, role: row.role, parts: parts.map(x => x.part),
-    text: text.slice(0, maxChars) };
+    text: text.slice(0, maxChars), nearby };
 }
 
 export function stats(db) {

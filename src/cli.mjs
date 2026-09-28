@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { forgetConversation } from './archive.mjs';
 import { activeDataDir, state, saveState, readJson, statusPath } from './paths.mjs';
 import { sessionFiles, findSession, preview } from './sessions.mjs';
@@ -10,6 +10,9 @@ import { isConfigured, isActive } from './cli-support.mjs';
 import { installHooks, removeHooks } from './hooks-config.mjs';
 import { storageStatus, setStorageTarget, migrateStorage } from './storage.mjs';
 import { diagnose } from './diagnostics.mjs';
+import { evaluate } from './eval.mjs';
+import { candidates, pin, listPins, updatePin, retirePin } from './pins.mjs';
+import { archives, exportConversation } from './privacy.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 const output = value => console.log(JSON.stringify(value, null, 2));
@@ -39,17 +42,37 @@ try {
     saveState(settings);
     output({ selected: settings.sessions.map(x => x.id), retainedArchive: true });
   } else if (command === 'forget') {
+    if (!/^[0-9a-f-]{8,36}$/i.test(args[0] || '')) throw new Error('Specify an archived session ID.');
     const settings = state();
-    const matches = settings.sessions.filter(x => x.id === args[0] || x.id.startsWith(args[0] || '\0'));
-    if (matches.length !== 1) throw new Error('Specify one selected session ID.');
     const db = openStore();
-    db.exec('BEGIN');
-    try { clearSession(db, matches[0].id); db.exec('COMMIT'); } catch (error) { db.exec('ROLLBACK'); throw error; }
-    db.close();
-    forgetConversation(activeDataDir(), matches[0].id);
+    const matches = db.prepare('SELECT id FROM sessions WHERE id=? OR id LIKE ?').all(args[0] || '', (args[0] || '') + '%');
+    if (matches.length !== 1) { db.close(); throw new Error('Specify one archived session ID.'); }
     settings.sessions = settings.sessions.filter(x => x.id !== matches[0].id);
     saveState(settings);
+    try {
+      db.exec('BEGIN');
+      try {
+        db.prepare('DELETE FROM pins WHERE session_id=?').run(matches[0].id);
+        clearSession(db, matches[0].id);
+        db.exec('COMMIT');
+      } catch (error) { db.exec('ROLLBACK'); throw error; }
+    } finally { db.close(); }
+    forgetConversation(activeDataDir(), matches[0].id);
     output({ forgotten: matches[0].id });
+  } else if (command === 'archives') {
+    const db = openStore(); try { output(archives(db)); } finally { db.close(); }
+  } else if (command === 'export') {
+    const db = openStore(); try { output(exportConversation(db, args[0], args[1])); } finally { db.close(); }
+  } else if (command === 'candidates') {
+    const db = openStore(); try { output(candidates(db, Number(args[0]) || 30)); } finally { db.close(); }
+  } else if (command === 'pins') {
+    const db = openStore(); try { output(listPins(db, { status: args[0] || 'active', query: args.slice(1).join(' ') })); } finally { db.close(); }
+  } else if (command === 'pin') {
+    const db = openStore(); try { output(pin(db, Number(args[0]), args[1], args.slice(2).join(' '))); } finally { db.close(); }
+  } else if (command === 'update-pin') {
+    const db = openStore(); try { output(updatePin(db, Number(args[0]), args.slice(1).join(' '))); } finally { db.close(); }
+  } else if (command === 'retire-pin') {
+    const db = openStore(); try { output(retirePin(db, Number(args[0]))); } finally { db.close(); }
   } else if (command === 'storage') {
     if (!args.length) output(storageStatus());
     else if (args[0] === 'target') output(setStorageTarget(args[1]));
@@ -75,7 +98,23 @@ try {
       watcher: existsSync(statusPath) ? readJson(statusPath, null) : null });
     db.close();
   } else if (command === 'search') {
-    const db = openStore(); output(search(db, args.join(' '))); db.close();
+    const filters = {};
+    const words = [];
+    const flags = { '--session': 'sessionId', '--project': 'project', '--since': 'since',
+      '--until': 'until', '--role': 'role', '--limit': 'limit' };
+    for (let i = 0; i < args.length; i++) {
+      if (flags[args[i]]) {
+        if (!args[i + 1]) throw new Error(`Missing value for ${args[i]}.`);
+        filters[flags[args[i]]] = args[++i];
+      } else if (args[i].startsWith('--')) throw new Error(`Unknown search option: ${args[i]}`);
+      else words.push(args[i]);
+    }
+    const db = openStore();
+    try { output(search(db, words.join(' '), filters)); } finally { db.close(); }
+  } else if (command === 'eval') {
+    if (!args[0]) throw new Error('Provide a JSON evaluation file.');
+    const db = openStore();
+    try { output(evaluate(db, JSON.parse(readFileSync(args[0], 'utf8')))); } finally { db.close(); }
   } else if (command === 'read') {
     const db = openStore(); output(readChunk(db, Number(args[0]), 5000, Number(args[1]) || 0)); db.close();
   } else if (command === 'install-hooks') {
@@ -83,6 +122,6 @@ try {
   } else if (command === 'remove-hooks') {
     output({ removed: removeHooks() });
   } else {
-    console.log('承·上: list [n] | add <session-id> | reindex <session-id> | remove <session-id> | forget <session-id> | threshold <0.1..0.95> | storage [target <folder>|migrate] | sync | watch | status | doctor | search <words> | read <chunk-id> | install-hooks | remove-hooks');
+    console.log('承·上: list [n] | add <session-id> | reindex <session-id> | remove <session-id> | forget <session-id> | threshold <0.1..0.95> | storage [target <folder>|migrate] | sync | watch | status | doctor | archives | export <session-id> <absolute-file> | candidates | pins [status] [query] | pin <chunk-id> <kind> [note] | update-pin <id> <note> | retire-pin <id> | search <words> [filters] | eval <cases.json> | read <chunk-id> | install-hooks | remove-hooks');
   }
 } catch (error) { console.error(error.message); process.exitCode = 1; }

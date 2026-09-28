@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { openStore, saveChunk, search } from '../src/store.mjs';
 import { setStorageTarget, migrateStorage } from '../src/storage.mjs';
 
@@ -17,6 +17,8 @@ test('storage migration keeps a searchable live WAL and switches only after succ
     mkdirSync(join(source, 'conversations', 'kept'), { recursive: true });
     writeFileSync(join(source, 'conversations', 'kept', 'session.json'), '{}');
     const db = openStore(join(source, 'memory.sqlite'));
+    db.prepare('INSERT INTO sessions(id,path,cwd,created,offset,line_no) VALUES(?,?,?,?,?,?)')
+      .run('kept', 'source.jsonl', 'demo', '2026-01-01', 1, 1);
     saveChunk(db, { sessionId: 'kept', lineNo: 1, part: 0, role: 'user', text: '对话归档迁移验证' });
     setStorageTarget(target, config);
     assert.equal(existsSync(join(target, 'memory.sqlite')), false);

@@ -7,6 +7,7 @@ import { dataDir } from '../src/paths.mjs';
 import { openStore, search, readChunk, stats } from '../src/store.mjs';
 import { ingest, latestUsage } from '../src/ingest.mjs';
 import { archiveHealth } from '../src/diagnostics.mjs';
+import { evaluate } from '../src/eval.mjs';
 import { vector, similarity } from '../src/vector.mjs';
 
 test('incremental import, incomplete line, Chinese vector search and exact read', async () => {
@@ -52,6 +53,11 @@ test('incremental import, incomplete line, Chinese vector search and exact read'
     assert.equal(otherArchive.prepare('SELECT count(*) n FROM chunks').get().n, 1);
     otherArchive.close();
     assert.equal(archiveHealth(db, [file, other], dir).readable, true);
+    assert.ok(search(db, '向量检索', { project: 'demo', since: '2026-01-01', role: 'user' }).length);
+    assert.equal(search(db, '向量检索', { until: '2025-12-31' }).length, 0);
+    const assistant = db.prepare("SELECT id FROM chunks WHERE session_id=? AND role='assistant' LIMIT 1").get(file.id);
+    assert.ok(readChunk(db, assistant.id, 5000, 0, 1).nearby.some(x => x.role === 'user'));
+    assert.equal(evaluate(db, [{ query: '中文对话搜索', expectedText: '向量检索' }]).recallAt5, 1);
     unlinkSync(join(dir, 'conversations', 'another', 'context.sqlite'));
     assert.equal(archiveHealth(db, [file, other], dir).readable, false);
   } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
