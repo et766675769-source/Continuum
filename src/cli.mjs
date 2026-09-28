@@ -10,9 +10,10 @@ import { isConfigured, isActive } from './cli-support.mjs';
 import { installHooks, removeHooks } from './hooks-config.mjs';
 import { storageStatus, setStorageTarget, migrateStorage } from './storage.mjs';
 import { diagnose } from './diagnostics.mjs';
-import { evaluate } from './eval.mjs';
+import { evaluate, evaluateResume } from './eval.mjs';
 import { candidates, pin, listPins, updatePin, retirePin } from './pins.mjs';
 import { archives, exportConversation } from './privacy.mjs';
+import { createTask, linkTask, listTasks, saveCheckpoint, resume, reviewCheckpoint, ensureTask, renameTask, forgetTaskEvidence, recordFeedback, feedbackReport } from './tasks.mjs';
 
 const [command, ...args] = process.argv.slice(2);
 const output = value => console.log(JSON.stringify(value, null, 2));
@@ -28,7 +29,7 @@ try {
     const settings = state();
     if (!settings.sessions.some(x => x.id === file.id)) settings.sessions.push({ id: file.id, path: file.path });
     const db = openStore();
-    try { output(await ingest(db, file)); saveState(settings); }
+    try { const imported = await ingest(db, file); ensureTask(db, file.id); output(imported); saveState(settings); }
     finally { db.close(); }
   } else if (command === 'reindex') {
     const selected = state().sessions.find(x => x.id === args[0] || x.id.startsWith(args[0] || '\0'));
@@ -53,13 +54,31 @@ try {
       db.exec('BEGIN');
       try {
         db.prepare('DELETE FROM pins WHERE session_id=?').run(matches[0].id);
+      forgetTaskEvidence(db, matches[0].id);
         clearSession(db, matches[0].id);
         db.exec('COMMIT');
       } catch (error) { db.exec('ROLLBACK'); throw error; }
     } finally { db.close(); }
     forgetConversation(activeDataDir(), matches[0].id);
     output({ forgotten: matches[0].id });
-  } else if (command === 'archives') {
+  } else if (command === 'tasks') {
+    const db = openStore(); try { output(listTasks(db, args[0])); } finally { db.close(); }
+  } else if (command === 'task-create') {
+    const db = openStore(); try { output(createTask(db, args.slice(1).join(' '), args[0])); } finally { db.close(); }
+  } else if (command === 'task-rename') {
+    const db = openStore(); try { output(renameTask(db, Number(args[0]), args.slice(1).join(' '))); } finally { db.close(); }  } else if (command === 'task-link') {
+    const db = openStore(); try { output(linkTask(db, Number(args[0]), args[1])); } finally { db.close(); }
+  } else if (command === 'checkpoint') {
+    const db = openStore(); try { output(saveCheckpoint(db, Number(args[0]), JSON.parse(readFileSync(args[1], 'utf8')))); } finally { db.close(); }
+  } else if (command === 'resume') {
+    const db = openStore(); try { output(resume(db, Number(args[0]))); } finally { db.close(); }
+  } else if (command === 'review-checkpoint') {
+    const db = openStore(); try { output(reviewCheckpoint(db, Number(args[0]))); } finally { db.close(); }  } else if (command === 'feedback') {
+    const db = openStore();
+    try { output(recordFeedback(db, Number(args[0]), args[1] === 'good' ? true : args[1] === 'bad' ? false : null, args.slice(2).join(' '))); }
+    finally { db.close(); }
+  } else if (command === 'feedback-report') {
+    const db = openStore(); try { output(feedbackReport(db)); } finally { db.close(); }  } else if (command === 'archives') {
     const db = openStore(); try { output(archives(db)); } finally { db.close(); }
   } else if (command === 'export') {
     const db = openStore(); try { output(exportConversation(db, args[0], args[1])); } finally { db.close(); }
@@ -100,7 +119,7 @@ try {
   } else if (command === 'search') {
     const filters = {};
     const words = [];
-    const flags = { '--session': 'sessionId', '--project': 'project', '--since': 'since',
+    const flags = { '--session': 'sessionId', '--task': 'taskId', '--project': 'project', '--since': 'since',
       '--until': 'until', '--role': 'role', '--limit': 'limit' };
     for (let i = 0; i < args.length; i++) {
       if (flags[args[i]]) {
@@ -111,6 +130,10 @@ try {
     }
     const db = openStore();
     try { output(search(db, words.join(' '), filters)); } finally { db.close(); }
+  } else if (command === 'eval-resume') {
+    if (!args[0]) throw new Error('Provide a JSON evaluation file.');
+    const db = openStore();
+    try { output(evaluateResume(db, JSON.parse(readFileSync(args[0], 'utf8')))); } finally { db.close(); }
   } else if (command === 'eval') {
     if (!args[0]) throw new Error('Provide a JSON evaluation file.');
     const db = openStore();
@@ -122,6 +145,6 @@ try {
   } else if (command === 'remove-hooks') {
     output({ removed: removeHooks() });
   } else {
-    console.log('承·上: list [n] | add <session-id> | reindex <session-id> | remove <session-id> | forget <session-id> | threshold <0.1..0.95> | storage [target <folder>|migrate] | sync | watch | status | doctor | archives | export <session-id> <absolute-file> | candidates | pins [status] [query] | pin <chunk-id> <kind> [note] | update-pin <id> <note> | retire-pin <id> | search <words> [filters] | eval <cases.json> | read <chunk-id> | install-hooks | remove-hooks');
+    console.log('承·上: list [n] | add <session-id> | reindex <session-id> | remove <session-id> | forget <session-id> | threshold <0.1..0.95> | storage [target <folder>|migrate] | sync | watch | status | doctor | tasks | task-create <session-id> <title> | task-rename <task-id> <title> | task-link <task-id> <session-id> | checkpoint <task-id> <items.json> | resume <task-id> | review-checkpoint <id> | archives | export <session-id> <absolute-file> | candidates | pins [status] [query] | pin <chunk-id> <kind> [note] | update-pin <id> <note> | retire-pin <id> | search <words> [filters] | eval <cases.json> | eval-resume <cases.json> | feedback <task-id> <good|bad> | feedback-report | read <chunk-id> | install-hooks | remove-hooks');
   }
 } catch (error) { console.error(error.message); process.exitCode = 1; }

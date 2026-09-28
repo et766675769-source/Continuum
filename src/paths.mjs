@@ -23,7 +23,14 @@ export function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   const temp = `${path}.${process.pid}.tmp`;
   writeFileSync(temp, JSON.stringify(value, null, 2), 'utf8');
-  renameSync(temp, path);
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try { renameSync(temp, path); return; }
+    catch (error) {
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt === 5) throw error;
+      // ponytail: cloud-sync file locks are brief; keep this synchronous retry bounded.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * (attempt + 1));
+    }
+  }
 }
 
 export function state() { return readJson(join(activeDataDir(), 'state.json'), { sessions: [], threshold: 0.7 }); }

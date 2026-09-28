@@ -6,6 +6,7 @@ import { openStore, stats } from './store.mjs';
 import { ingest, latestUsage } from './ingest.mjs';
 import { isConfigured, isActive } from './cli-support.mjs';
 import { archiveHealth } from './diagnostics.mjs';
+import { listTasks, resume, ensureTask } from './tasks.mjs';
 
 const pidPath = join(dataDir, 'watch.pid');
 
@@ -25,6 +26,7 @@ export async function scanOnce(db = openStore()) {
   const errors = [];
   for (const selected of settings.sessions) {
     const file = existsSync(selected.path) ? selected : findSession(selected.id);
+    if (db.prepare('SELECT 1 FROM sessions WHERE id=?').get(selected.id)) ensureTask(db, selected.id);
     if (!file) { errors.push(`${selected.id}: source missing`); continue; }
     try {
       const usage = latestUsage(file.path);
@@ -39,7 +41,9 @@ export async function scanOnce(db = openStore()) {
   const health = archiveHealth(db, settings.sessions);
   const report = { at: new Date().toISOString(), configured: isConfigured(), connected: isActive(),
     readable: health.readable, indexed: health.indexed, pendingBytes: health.pendingBytes,
-    threshold: settings.threshold, ...stats(db), selected: sessionStatus, errors: [...errors, ...health.issues] };
+    threshold: settings.threshold, ...stats(db), selected: sessionStatus,
+    tasks: listTasks(db).map(x => ({ id: x.id, title: x.title, status: resume(db, x.id).status })),
+    errors: [...errors, ...health.issues] };
   writeJson(statusPath, report);
   return report;
 }
@@ -52,7 +56,10 @@ export async function watch() {
     if (scanning) return;
     scanning = true;
     try { await scanOnce(db); }
-    catch (error) { writeJson(statusPath, { at: new Date().toISOString(), configured: isConfigured(), connected: isActive(), error: error.message }); }
+    catch (error) {
+      try { writeJson(statusPath, { at: new Date().toISOString(), configured: isConfigured(), connected: isActive(), error: error.message }); }
+      catch { /* A locked status file must not stop the watcher. */ }
+    }
     finally { scanning = false; }
   };
   await tick();

@@ -24,7 +24,7 @@ $script:statusFile = Join-Path (Get-StorageDir) 'status.json'
 $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $form = New-Object System.Windows.Forms.Form
 $form.Text = '承·上'
-$form.Size = New-Object System.Drawing.Size(264, 88)
+$form.Size = New-Object System.Drawing.Size(264, 108)
 $form.FormBorderStyle = 'None'
 $form.TopMost = $true
 $form.ShowInTaskbar = $false
@@ -63,7 +63,7 @@ $logoView = New-Object System.Windows.Forms.PictureBox
 $logoView.Image = [System.Drawing.Image]::FromFile($markPath)
 $logoView.SizeMode = 'Zoom'
 $logoView.Size = New-Object System.Drawing.Size(32, 32)
-$logoView.Location = New-Object System.Drawing.Point(9, 25)
+$logoView.Location = New-Object System.Drawing.Point(9, 35)
 $logoView.BackColor = [System.Drawing.Color]::Transparent
 $form.Controls.Add($logoView)
 
@@ -86,6 +86,11 @@ $setup = $menu.Items.Add('接入检查...')
 $setup.Add_Click({
   try { & (Join-Path $PSScriptRoot 'setup.ps1') -Node $node -Cli $cli }
   catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：接入检查失败') }
+})
+$taskMenu = $menu.Items.Add('任务续接...')
+$taskMenu.Add_Click({
+  try { & (Join-Path $PSScriptRoot 'tasks.ps1') -Node $node -Cli $cli }
+  catch { [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：任务续接失败') }
 })
 $memory = $menu.Items.Add('重点记忆...')
 $memory.Add_Click({
@@ -225,7 +230,12 @@ $timer.Add_Tick({
       }
       $current = $status.selected | Sort-Object ratio -Descending | Select-Object -First 1
       $window = if ($null -ne $current) { "窗口 $($current.ratio)%  ($($current.inputTokens) / $($current.contextWindow) tokens)" } else { '窗口 --' }
-      $label.Text = "承·上  $health`n$window`n归档 $($status.chars) 字 / $($status.chunks) 段"
+            $handoff = if ($status.tasks.Count -eq 0) { '未建立' } elseif ($status.tasks.Count -gt 1) { "$($status.tasks.Count) 个任务" } else {
+        switch ($status.tasks[0].status) {
+          'reviewed' { '已确认' }; 'source-backed' { '待确认' }; 'stale' { '待核对' }; default { '无续接卡' }
+        }
+      }
+      $label.Text = "承·上  $health`n$window`n归档 $($status.chars) 字 / $($status.chunks) 段`n交接 $handoff"
     } catch { $label.Text = "承·上  等待监控启动..." }
   }
 

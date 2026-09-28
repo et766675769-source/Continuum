@@ -12,11 +12,15 @@ export function installHooks() {
   config.hooks ||= {};
   for (const name of names) {
     config.hooks[name] ||= [];
-    if (config.hooks[name].some(group => group.hooks?.some(hook => hook.command?.includes(script)))) continue;
+    const existing = config.hooks[name].find(group => group.hooks?.some(hook => hook.command?.includes(script)));
+    if (existing) {
+      if (name === 'SessionStart') existing.matcher = '^(startup|resume|clear|compact)$';
+      continue;
+    }
     const handler = { type: 'command', command, timeout: name === 'SessionEnd' ? 3 : 10 };
     if (name === 'UserPromptSubmit' || name === 'SessionStart') handler.additionalContextLimit = 500;
     const group = { hooks: [handler] };
-    if (name === 'SessionStart') group.matcher = '^compact$';
+    if (name === 'SessionStart') group.matcher = '^(startup|resume|clear|compact)$';
     config.hooks[name].push(group);
   }
   writeJson(path, config);
@@ -41,6 +45,7 @@ export function hooksInstalled(configPath = path) {
   try {
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
     return names.every(name => config.hooks?.[name]?.some(group =>
-      group.hooks?.some(hook => hook.command?.includes(script))));
+      group.hooks?.some(hook => hook.command?.includes(script)) &&
+      (name !== 'SessionStart' || group.matcher === '^(startup|resume|clear|compact)$')));
   } catch { return false; }
 }

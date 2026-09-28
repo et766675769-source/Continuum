@@ -17,6 +17,11 @@ test('MCP handshake exposes a live connection and clears it on exit', async () =
     assert.equal(JSON.parse(chunk.toString()).result.serverInfo.name, 'cheng-shang');
     assert.equal(existsSync(marker), true);
     assert.equal(isActive(), true);
+    child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) + '\n');
+    const [listed] = await once(child.stdout, 'data');
+    const names = JSON.parse(listed.toString()).result.tools.map(x => x.name);
+    assert.ok(names.includes('memory_checkpoint'));
+    assert.ok(names.includes('memory_resume'));
   } finally {
     const exited = once(child, 'exit');
     child.stdin.end();

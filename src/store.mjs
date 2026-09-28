@@ -28,7 +28,26 @@ export function openStore(path = join(activeDataDir(), 'memory.sqlite')) {
       updated TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS pins_session ON pins(session_id,status);
-  `);
+    CREATE TABLE IF NOT EXISTS tasks (
+      id INTEGER PRIMARY KEY, title TEXT NOT NULL, project TEXT NOT NULL,
+      updated TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS task_sessions (
+      task_id INTEGER NOT NULL, session_id TEXT NOT NULL UNIQUE,
+      PRIMARY KEY(task_id,session_id)
+    );
+    CREATE TABLE IF NOT EXISTS checkpoints (
+      id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL, version INTEGER NOT NULL,
+      items TEXT NOT NULL, coverage TEXT NOT NULL,
+      reviewed INTEGER NOT NULL DEFAULT 0, invalidated INTEGER NOT NULL DEFAULT 0, created TEXT NOT NULL,
+      UNIQUE(task_id,version)
+    );
+
+    CREATE TABLE IF NOT EXISTS resume_feedback (
+      id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL, checkpoint_id INTEGER,
+      helpful INTEGER NOT NULL, note TEXT NOT NULL DEFAULT '',
+      created TEXT NOT NULL
+    );  `);
   return db;
 }
 
@@ -41,13 +60,14 @@ export function saveChunk(db, chunk) {
 }
 
 export function clearSession(db, id) {
+  db.prepare("UPDATE checkpoints SET invalidated=1 WHERE task_id IN (SELECT task_id FROM task_sessions WHERE session_id=?)").run(id);
   db.prepare("UPDATE pins SET status='stale',updated=datetime('now') WHERE session_id=? AND status='active'").run(id);
   db.prepare('DELETE FROM chunk_fts WHERE rowid IN (SELECT id FROM chunks WHERE session_id=?)').run(id);
   db.prepare('DELETE FROM chunks WHERE session_id=?').run(id);
   db.prepare('DELETE FROM sessions WHERE id=?').run(id);
 }
 
-export function search(db, query, { sessionId, project, since, until, role, limit = 6, conversationOnly = false } = {}) {
+export function search(db, query, { sessionId, taskId, project, since, until, role, limit = 6, conversationOnly = false } = {}) {
   if (role && !['user', 'assistant', 'tool_call', 'tool_result'].includes(role)) throw new Error('Invalid role filter.');
   for (const date of [since, until]) if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Dates must use YYYY-MM-DD.');
   const allWords = [...new Set(terms(query))];
@@ -59,10 +79,11 @@ export function search(db, query, { sessionId, project, since, until, role, limi
     s.cwd,s.created,bm25(chunk_fts) AS rank
     FROM chunk_fts JOIN chunks c ON c.id=chunk_fts.rowid JOIN sessions s ON s.id=c.session_id
     WHERE chunk_fts MATCH ? AND (? IS NULL OR c.session_id=?)
+      AND (? IS NULL OR c.session_id IN (SELECT session_id FROM task_sessions WHERE task_id=?))
       AND (? IS NULL OR s.cwd=?) AND (? IS NULL OR substr(s.created,1,10)>=?)
       AND (? IS NULL OR substr(s.created,1,10)<=?) AND (? IS NULL OR c.role=?)
       AND (? = 0 OR c.role IN ('user','assistant'))
-    ORDER BY rank LIMIT 120`).all(match, sessionId || null, sessionId || null,
+    ORDER BY rank LIMIT 120`).all(match, sessionId || null, sessionId || null, taskId || null, taskId || null,
       project || null, project || null, since || null, since || null, until || null, until || null,
       role || null, role || null, conversationOnly ? 1 : 0);
   const qvec = vector(query);
