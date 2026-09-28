@@ -27,7 +27,7 @@ node src/cli.mjs doctor
 
 Codex 首次使用钩子时，按官方要求在 `/hooks` 中审阅并信任承·上的四个钩子。它们在压缩前补存、会话结束时补存、压缩后给出简短检索指引，并在新提示词与历史片段相关时自动提供最多两个段落 ID。原文不会通过钩子注入模型，需由 MCP 按需读取。钩子发生错误时不会阻断 Codex。运行 `node src/cli.mjs remove-hooks` 可撤销钩子配置。
 
-用 PowerShell 运行 `desktop/Start.ps1`，启动后台监控和右上角无边框状态小窗。圆角小窗拖到屏幕边缘后会自动收起，只露出 5px 高亮色条；鼠标靠近色条会展开；右键可查看任务续接卡、指定对话、设置存放路径、迁移归档数据或隐藏到系统托盘；托盘图标双击可重新显示，托盘菜单中的“退出”才结束小窗。运行 `desktop/install-autostart.ps1` 可单独设置登录后自动启动。Git 克隆安装可双击 `Update.cmd` 一键更新；更新前会拒绝覆盖本地代码修改，只接受快进更新，`data/` 与自定义归档目录保持原样。非 Git 下载包可下载新版代码后重新运行安装程序。Codex 重启或新开任务后可使用 `memory_resume`、`memory_checkpoint`、`memory_search`、`memory_read`、`memory_status`。MCP 服务自身无需常驻；后台监控负责自动同步。
+用 PowerShell 运行 `desktop/Start.ps1`，启动后台监控和右上角无边框状态小窗。左侧小图标以绿色表示已接入且可读取，以红色表示未接入或同步异常。圆角小窗拖到屏幕边缘后会自动收起，只露出 5px 高亮色条；鼠标靠近色条会展开；右键可查看任务续接卡、指定对话、设置存放路径、迁移归档数据、勾选开机启动或隐藏到系统托盘；托盘图标双击可重新显示，托盘菜单中的“退出”才结束小窗。运行 `desktop/install-autostart.ps1` 也可单独设置登录后自动启动。Git 克隆安装可双击 `Update.cmd` 一键更新；更新前会拒绝覆盖本地代码修改，只接受快进更新，`data/` 与自定义归档目录保持原样。非 Git 下载包可下载新版代码后重新运行安装程序。Codex 重启或新开任务后可使用 `memory_resume`、`memory_checkpoint`、`memory_search`、`memory_read`、`memory_status`。MCP 服务自身无需常驻；后台监控负责自动同步。
 
 ## 任务续接
 

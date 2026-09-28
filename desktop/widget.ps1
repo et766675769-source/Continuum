@@ -24,15 +24,14 @@ $script:statusFile = Join-Path (Get-StorageDir) 'status.json'
 $area = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
 $form = New-Object System.Windows.Forms.Form
 $form.Text = '承·上'
-$form.Size = New-Object System.Drawing.Size(264, 108)
+$form.Size = New-Object System.Drawing.Size(354, 98)
 $form.FormBorderStyle = 'None'
 $form.TopMost = $true
 $form.ShowInTaskbar = $false
 $form.StartPosition = 'Manual'
-$form.Location = New-Object System.Drawing.Point(($area.Right - 264), ($area.Top + 30))
+$form.Location = New-Object System.Drawing.Point(($area.Right - $form.Width), ($area.Top + 30))
 $form.BackColor = [System.Drawing.Color]::FromArgb(29, 34, 42)
 $form.ForeColor = [System.Drawing.Color]::White
-$normalColor = $form.BackColor
 $highlightColor = [System.Drawing.Color]::FromArgb(65, 220, 183)
 $round = [System.Drawing.Drawing2D.GraphicsPath]::new()
 $diameter = 18
@@ -53,19 +52,32 @@ $form.Add_Paint({
 
 $label = New-Object System.Windows.Forms.Label
 $label.Dock = 'Fill'
-$label.Padding = New-Object System.Windows.Forms.Padding(50, 10, 4, 4)
-$label.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 8.5)
+$label.Padding = New-Object System.Windows.Forms.Padding(52, 14, 12, 10)
+$label.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10)
 $label.BackColor = [System.Drawing.Color]::Transparent
 $label.Text = "承·上  等待同步..."
 $form.Controls.Add($label)
 $markPath = Join-Path $project 'assets\continuum-mark.png'
 $logoView = New-Object System.Windows.Forms.PictureBox
-$logoView.Image = [System.Drawing.Image]::FromFile($markPath)
+$logoGreen = [System.Drawing.Bitmap]::new($markPath)
+$logoRed = [System.Drawing.Bitmap]::new($logoGreen.Width, $logoGreen.Height)
+for ($x = 0; $x -lt $logoGreen.Width; $x++) {
+  for ($y = 0; $y -lt $logoGreen.Height; $y++) {
+    $alpha = $logoGreen.GetPixel($x, $y).A
+    $logoRed.SetPixel($x, $y, [System.Drawing.Color]::FromArgb($alpha, 235, 84, 91))
+  }
+}
+$logoView.Image = $logoRed
 $logoView.SizeMode = 'Zoom'
-$logoView.Size = New-Object System.Drawing.Size(32, 32)
-$logoView.Location = New-Object System.Drawing.Point(9, 35)
+$logoView.Size = New-Object System.Drawing.Size(24, 24)
+$logoView.Location = New-Object System.Drawing.Point(14, (($form.Height - $logoView.Height) / 2))
 $logoView.BackColor = [System.Drawing.Color]::Transparent
 $form.Controls.Add($logoView)
+$logoView.BringToFront()
+$edgeStrip = New-Object System.Windows.Forms.Panel
+$edgeStrip.BackColor = $highlightColor
+$edgeStrip.Visible = $false
+$form.Controls.Add($edgeStrip)
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $show = $menu.Items.Add('显示窗口')
@@ -73,7 +85,8 @@ $show.Add_Click({
   $form.Show()
   if ($script:hidden) {
     $form.Location = $script:expandedLocation
-    $form.BackColor = $normalColor
+    $edgeStrip.Visible = $false
+    $form.Invalidate($true)
     $script:hidden = $false
   }
   $script:hideAt = [DateTime]::UtcNow.AddMilliseconds(1500)
@@ -152,6 +165,26 @@ $migrate.Add_Click({
   }
 })
 [void]$menu.Items.Add('-')
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$runName = 'ChengShang'
+$launcher = Join-Path $PSScriptRoot 'Start.ps1'
+function Test-Autostart {
+  try { return (Get-ItemPropertyValue -Path $runKey -Name $runName -ErrorAction Stop) -match [regex]::Escape($launcher) }
+  catch { return $false }
+}
+$autostart = $menu.Items.Add('开机启动')
+$autostart.Checked = Test-Autostart
+$autostart.Add_Click({
+  try {
+    if ($autostart.Checked) { Remove-ItemProperty -Path $runKey -Name $runName -ErrorAction Stop }
+    else { & (Join-Path $PSScriptRoot 'install-autostart.ps1') | Out-Null }
+    $autostart.Checked = Test-Autostart
+  } catch {
+    $autostart.Checked = Test-Autostart
+    [void][System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '承·上：开机启动设置失败')
+  }
+})
+$menu.Add_Opening({ $autostart.Checked = Test-Autostart })
 $exit = $menu.Items.Add('退出')
 $script:reallyExit = $false
 $exit.Add_Click({ $script:reallyExit = $true; $form.Close() })
@@ -161,6 +194,7 @@ $form.Add_FormClosing({ param($sender, $e)
 $form.ContextMenuStrip = $menu
 $label.ContextMenuStrip = $menu
 $logoView.ContextMenuStrip = $menu
+$edgeStrip.ContextMenuStrip = $menu
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Icon = [System.Drawing.Icon]::new((Join-Path $project 'assets\continuum-icon.ico'))
 $form.Icon = $tray.Icon
@@ -224,6 +258,7 @@ $timer.Add_Tick({
       $age = ([DateTime]::UtcNow - [DateTime]::Parse($status.at).ToUniversalTime()).TotalSeconds
       $health = if ($age -gt 30) { '监控未运行' } elseif (-not $status.configured) { '未配置 Codex' } elseif ($status.selected.Count -eq 0) { '未选对话' } elseif (-not $status.readable) { '归档待验证' } elseif ($status.connected) { '已接入·可读取' } else { '归档可用·待连接' }
       if ($status.errors.Count -gt 0 -or $status.error) { $health = '同步异常' }
+      $logoView.Image = if ($health -eq '已接入·可读取') { $logoGreen } else { $logoRed }
       $current = $status.selected | Sort-Object ratio -Descending | Select-Object -First 1
       $window = if ($null -ne $current) { "窗口 $($current.ratio)%  ($($current.inputTokens) / $($current.contextWindow) tokens)" } else { '窗口 --' }
             $handoff = if ($status.tasks.Count -eq 0) { '未建立' } elseif ($status.tasks.Count -gt 1) { "$($status.tasks.Count) 个任务" } else {
@@ -232,7 +267,7 @@ $timer.Add_Tick({
         }
       }
       $label.Text = "承·上  $health`n$window`n归档 $($status.chars) 字 / $($status.chunks) 段`n交接 $handoff"
-    } catch { $label.Text = "承·上  等待监控启动..." }
+    } catch { $logoView.Image = $logoRed; $label.Text = "承·上  等待监控启动..." }
   }
 
   if (-not $form.Visible -or -not $script:edge -or $script:dragging) { return }
@@ -241,7 +276,8 @@ $timer.Add_Tick({
     $hot = New-Object System.Drawing.Rectangle(($form.Left - 24), ($form.Top - 24), ($form.Width + 48), ($form.Height + 48))
     if ($hot.Contains($cursor)) {
       $form.Location = $script:expandedLocation
-      $form.BackColor = $normalColor
+      $edgeStrip.Visible = $false
+      $form.Invalidate($true)
       $script:hidden = $false
       $script:hideAt = [DateTime]::UtcNow.AddMilliseconds(700)
     }
@@ -250,15 +286,25 @@ $timer.Add_Tick({
   } elseif ([DateTime]::UtcNow -ge $script:hideAt) {
     $screen = [System.Windows.Forms.Screen]::FromRectangle($form.Bounds).WorkingArea
     $x = $form.Left; $y = $form.Top
-    if ($script:edge -eq 'right') { $x = $screen.Right - 5 }
-    elseif ($script:edge -eq 'left') { $x = $screen.Left - $form.Width + 5 }
-    elseif ($script:edge -eq 'top') { $y = $screen.Top - $form.Height + 5 }
-    elseif ($script:edge -eq 'bottom') { $y = $screen.Bottom - 5 }
+    if ($script:edge -eq 'right') {
+      $x = $screen.Right - 5
+      $edgeStrip.Bounds = New-Object System.Drawing.Rectangle(0, 0, 5, $form.Height)
+    } elseif ($script:edge -eq 'left') {
+      $x = $screen.Left - $form.Width + 5
+      $edgeStrip.Bounds = New-Object System.Drawing.Rectangle(($form.Width - 5), 0, 5, $form.Height)
+    } elseif ($script:edge -eq 'top') {
+      $y = $screen.Top - $form.Height + 5
+      $edgeStrip.Bounds = New-Object System.Drawing.Rectangle(0, ($form.Height - 5), $form.Width, 5)
+    } elseif ($script:edge -eq 'bottom') {
+      $y = $screen.Bottom - 5
+      $edgeStrip.Bounds = New-Object System.Drawing.Rectangle(0, 0, $form.Width, 5)
+    }
+    $edgeStrip.BringToFront()
+    $edgeStrip.Visible = $true
     $form.Location = New-Object System.Drawing.Point($x, $y)
-    $form.BackColor = $highlightColor
     $script:hidden = $true
   }
 })
 $timer.Start()
 try { [System.Windows.Forms.Application]::Run($form) }
-finally { $timer.Stop(); $tray.Visible = $false; $tray.Icon.Dispose(); $tray.Dispose(); $logoView.Image.Dispose(); $menu.Dispose(); $round.Dispose(); $mutex.ReleaseMutex(); $mutex.Dispose() }
+finally { $timer.Stop(); $tray.Visible = $false; $tray.Icon.Dispose(); $tray.Dispose(); $logoGreen.Dispose(); $logoRed.Dispose(); $menu.Dispose(); $round.Dispose(); $mutex.ReleaseMutex(); $mutex.Dispose() }
