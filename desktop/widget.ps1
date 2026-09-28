@@ -224,10 +224,6 @@ $timer.Add_Tick({
       $age = ([DateTime]::UtcNow - [DateTime]::Parse($status.at).ToUniversalTime()).TotalSeconds
       $health = if ($age -gt 30) { '监控未运行' } elseif (-not $status.configured) { '未配置 Codex' } elseif ($status.selected.Count -eq 0) { '未选对话' } elseif (-not $status.readable) { '归档待验证' } elseif ($status.connected) { '已接入·可读取' } else { '归档可用·待连接' }
       if ($status.errors.Count -gt 0 -or $status.error) { $health = '同步异常' }
-      if (-not $script:setupOpened -and (-not $status.configured -or $status.selected.Count -eq 0)) {
-        $script:setupOpened = $true
-        $setup.PerformClick()
-      }
       $current = $status.selected | Sort-Object ratio -Descending | Select-Object -First 1
       $window = if ($null -ne $current) { "窗口 $($current.ratio)%  ($($current.inputTokens) / $($current.contextWindow) tokens)" } else { '窗口 --' }
             $handoff = if ($status.tasks.Count -eq 0) { '未建立' } elseif ($status.tasks.Count -gt 1) { "$($status.tasks.Count) 个任务" } else {
